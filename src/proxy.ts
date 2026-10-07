@@ -10,7 +10,7 @@ function configError(detail: string) {
       `<body style="font-family:system-ui;max-width:32rem;margin:4rem auto;padding:0 1rem;line-height:1.5">` +
       `<h1 style="font-size:1.25rem">Falta configurar Supabase</h1><p>${detail}</p>` +
       `<p>Revisá en Vercel: Settings &gt; Environment Variables (entorno Production) y volvé a hacer Deploy.</p></body>`,
-    { status: 500, headers: { "content-type": "text/html; charset=utf-8" } },
+    { status: 200, headers: { "content-type": "text/html; charset=utf-8", "x-config-error": "1" } },
   );
 }
 
