@@ -16,5 +16,5 @@ export async function GET(request: NextRequest) {
       ? await supabase.auth.verifyOtp({ token_hash: tokenHash, type })
       : { error: new Error("Link inválido") };
 
-  return NextResponse.redirect(new URL(error ? "/login" : "/", origin));
+  return NextResponse.redirect(new URL(error ? "/login?aviso=link" : "/", origin));
 }
