@@ -1,0 +1,81 @@
+@import "tailwindcss";
+
+:root {
+  --background: #f3f5f1;
+  --surface: #ffffff;
+  --foreground: #17201b;
+  --muted: #64716a;
+  --border: #dfe5df;
+  --accent: #2f6b4f;
+  --accent-soft: #e3efe7;
+  --sage: #8fb39b;
+  --danger: #b42318;
+  --warn: #b54708;
+  --income: #067647;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #0d1310;
+    --surface: #151d18;
+    --foreground: #e7ede9;
+    --muted: #93a39a;
+    --border: #253029;
+    --accent: #7fc49c;
+    --accent-soft: #1b3326;
+    --sage: #5f8a70;
+    --danger: #f97066;
+    --warn: #fdb022;
+    --income: #4ade80;
+  }
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-surface: var(--surface);
+  --color-foreground: var(--foreground);
+  --color-muted: var(--muted);
+  --color-border: var(--border);
+  --color-accent: var(--accent);
+  --color-accent-soft: var(--accent-soft);
+  --color-sage: var(--sage);
+  --color-danger: var(--danger);
+  --color-warn: var(--warn);
+  --color-income: var(--income);
+  --font-sans: var(--font-geist-sans);
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+}
+
+@layer components {
+  .card {
+    @apply rounded-2xl border border-border bg-surface p-4;
+  }
+  .label {
+    @apply mb-1 block text-sm font-medium text-muted;
+  }
+  .input {
+    @apply w-full rounded-xl border border-border bg-surface px-3 py-2.5 text-base text-foreground outline-none focus:border-accent;
+  }
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl bg-accent px-4 py-2.5 text-base font-semibold text-white disabled:opacity-50 dark:text-black;
+  }
+  .btn-ghost {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl border border-border bg-surface px-4 py-2.5 text-base font-medium text-foreground disabled:opacity-50;
+  }
+  .btn-sm {
+    @apply px-3 py-1.5 text-sm;
+  }
+  .chip {
+    @apply rounded-full border border-border px-3 py-1.5 text-sm has-[:checked]:border-accent has-[:checked]:bg-accent-soft has-[:checked]:font-semibold;
+  }
+  .badge {
+    @apply inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium whitespace-nowrap;
+  }
+  .page-title {
+    @apply text-2xl font-bold;
+  }
+}
