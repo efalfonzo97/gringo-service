@@ -1,4 +1,5 @@
 import { createServerClient } from "@supabase/ssr";
+import { supabaseEnv } from "@/lib/supabase/env";
 import { NextResponse, type NextRequest } from "next/server";
 
 const PUBLIC_PATHS = ["/login", "/auth"];
@@ -17,6 +18,12 @@ function configError(detail: string) {
 export async function proxy(request: NextRequest) {
   const missing = ["NEXT_PUBLIC_SUPABASE_URL", "NEXT_PUBLIC_SUPABASE_ANON_KEY"].filter((k) => !process.env[k]?.trim());
   if (missing.length) return configError(`No están cargadas: <b>${missing.join(", ")}</b>.`);
+  const { url } = supabaseEnv();
+  if (/^https:\/\/(app\.|www\.)?supabase\.com/.test(url)) {
+    return configError(
+      "NEXT_PUBLIC_SUPABASE_URL tiene el link del panel de Supabase. Tiene que ser la <b>Project URL</b>, con la forma <code>https://xxxx.supabase.co</code> (Project Settings &gt; API).",
+    );
+  }
 
   let response = NextResponse.next({ request });
   try {
@@ -33,8 +40,8 @@ async function withSession(
   getResponse: () => NextResponse,
 ) {
   const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!.trim(),
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!.trim(),
+    supabaseEnv().url,
+    supabaseEnv().key,
     {
       cookies: {
         getAll() {
