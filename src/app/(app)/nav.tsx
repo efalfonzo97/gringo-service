@@ -46,7 +46,13 @@ export function SideNav({ businessName }: { businessName: string }) {
           })}
         </ul>
       </nav>
-      <div className="px-3 pb-5">
+      <div className="space-y-1 px-3 pb-5">
+        <Link
+          href="/recordatorios"
+          className={`flex items-center gap-3 rounded-xl px-3 py-2.5 ${isActive(pathname, "/recordatorios") ? "bg-accent-soft font-semibold text-accent" : "text-muted"}`}
+        >
+          <span aria-hidden>🔔</span> Recordatorios
+        </Link>
         <Link
           href="/ajustes"
           className={`flex items-center gap-3 rounded-xl px-3 py-2.5 ${isActive(pathname, "/ajustes") ? "bg-accent-soft font-semibold text-accent" : "text-muted"}`}

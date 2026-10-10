@@ -24,7 +24,11 @@ export const getContext = cache(async () => {
     business = created.data ?? { owner_id: userId, name: "Gringo Service", phone: null };
   }
 
-  return { supabase, userId, business };
+  // Las tablas de la actualización 0002 (fotos, categorías, recordatorios).
+  const { error: v2Error } = await supabase.from("reminders").select("id").limit(1);
+  const needsMigration = v2Error ? "0002_fotos_categorias_recordatorios.sql" : null;
+
+  return { supabase, userId, business, needsMigration };
 });
 
 export type AppContext = Awaited<ReturnType<typeof getContext>>;

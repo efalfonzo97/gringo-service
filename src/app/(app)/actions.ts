@@ -4,9 +4,9 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { getContext } from "@/lib/data";
 import { today } from "@/lib/format";
-import { EXPENSE_CATEGORIES, INCOME_CATEGORIES, JOB_KINDS, JOB_STATUS, PAY_METHODS, STOCK_CATEGORIES } from "@/lib/labels";
-import { orNull, parseAmount, str } from "@/lib/util";
-import type { JobKind, JobStatus, StockCategory } from "@/lib/types";
+import { EXPENSE_CATEGORIES, INCOME_CATEGORIES, JOB_KINDS, JOB_MOVEMENTS, JOB_STATUS, PAY_METHODS, expenseCategoryForStock } from "@/lib/labels";
+import { addMonths, orNull, parseAmount, str } from "@/lib/util";
+import type { JobKind, JobStatus } from "@/lib/types";
 
 export type FormState = { error?: string };
 
@@ -57,6 +57,8 @@ export async function deleteClient(formData: FormData) {
   const id = str(formData, "id");
   const { count } = await supabase.from("jobs").select("id", { count: "exact", head: true }).eq("client_id", id);
   if (count) redirect(`/clientes/${id}?error=tiene-casos`);
+  const { data: photos } = await supabase.from("photos").select("path").eq("client_id", id);
+  if (photos?.length) await supabase.storage.from("photos").remove(photos.map((p) => p.path));
   await supabase.from("clients").delete().eq("id", id);
   refresh();
   redirect("/clientes");
@@ -164,9 +166,36 @@ export async function saveJob(_: FormState, formData: FormData): Promise<FormSta
   if (status === "terminado") {
     await supabase.from("jobs").update({ closed_at: new Date().toISOString() }).eq("id", data.id).is("closed_at", null);
   }
-  if (!id) await supabase.from("job_notes").insert({ job_id: data.id, body: "Caso creado." });
+  if (!id) {
+    await supabase.from("job_notes").insert({ job_id: data.id, body: "Caso creado." });
+
+    // Revisión programada: recordatorio a N meses desde el día del trabajo.
+    const months = Number(str(formData, "review_months"));
+    if ([3, 6, 12].includes(months)) {
+      await supabase.from("reminders").insert({
+        client_id: clientId,
+        job_id: data.id,
+        equipment_id: equipmentId,
+        due_date: addMonths(scheduledDate ?? today(), months),
+        title: reviewTitle(kind, months),
+      });
+    }
+
+    // Caso creado desde un recordatorio: queda resuelto.
+    const reminderId = str(formData, "reminder_id");
+    if (reminderId) {
+      await supabase.from("reminders").update({ status: "hecho", done_job_id: data.id }).eq("id", reminderId);
+    }
+  }
   refresh();
   redirect(`/casos/${data.id}`);
+}
+
+function reviewTitle(kind: JobKind, months: number) {
+  const when = months === 12 ? "1 año" : `${months} meses`;
+  if (kind === "instalacion") return `Revisión de la instalación (${when})`;
+  if (kind === "mantenimiento") return `Próximo mantenimiento (${when})`;
+  return `Revisión post reparación (${when})`;
 }
 
 export async function setJobStatus(formData: FormData) {
@@ -235,21 +264,23 @@ export async function deleteStockMove(formData: FormData) {
   redirect(back(formData, "/stock"));
 }
 
-/** Registra un cobro del caso como ingreso en Finanzas. */
-export async function registerPayment(formData: FormData) {
+/** Cobro o gasto de un caso (repuestos comprados, viáticos…). Queda también en Finanzas. */
+export async function addJobMovement(formData: FormData) {
   const { supabase } = await getContext();
   const jobId = str(formData, "job_id");
   const amount = parseAmount(str(formData, "amount"));
+  const movement = JOB_MOVEMENTS.find((m) => m.value === str(formData, "movement")) ?? JOB_MOVEMENTS[0];
   const { data: job } = await supabase.from("jobs").select("id, number, title, kind, client_id").eq("id", jobId).single();
   if (job && amount) {
     const method = str(formData, "method");
+    const detail = str(formData, "description");
     await supabase.from("transactions").insert({
-      type: "ingreso",
-      category: job.kind === "instalacion" ? "Instalación" : "Servicio",
+      type: movement.type,
+      category: movement.type === "ingreso" ? (job.kind === "instalacion" ? "Instalación" : "Servicio") : movement.value,
       amount,
       method: method in PAY_METHODS ? method : "efectivo",
       date: dateOrNull(str(formData, "date")) ?? today(),
-      description: `Caso #${job.number} · ${job.title}`,
+      description: `Caso #${job.number} · ${detail || job.title}`,
       job_id: job.id,
       client_id: job.client_id,
     });
@@ -265,11 +296,14 @@ export async function saveStockItem(_: FormState, formData: FormData): Promise<F
   const id = str(formData, "id");
   const name = str(formData, "name");
   if (!name) return { error: "Poné el nombre del ítem." };
-  const category = str(formData, "category") as StockCategory;
+  let category = str(formData, "category");
+  if (category === "__nueva") category = str(formData, "new_category");
+  if (!category) return { error: "Elegí o escribí una categoría." };
+  await supabase.from("stock_categories").upsert({ name: category }, { onConflict: "owner_id,name", ignoreDuplicates: true });
 
   const row = {
     name,
-    category: category in STOCK_CATEGORIES ? category : "repuesto",
+    category,
     unit: str(formData, "unit") || "u",
     min_quantity: parseAmount(str(formData, "min_quantity")) ?? 0,
     cost: parseAmount(str(formData, "cost")) ?? 0,
@@ -320,7 +354,7 @@ export async function addStockMove(formData: FormData) {
 
   if (reason === "compra" && unitCost && formData.get("as_expense") === "on") {
     const { data: item } = await supabase.from("stock_items").select("name, category").eq("id", itemId).single();
-    const category = item?.category === "gas" ? "Gas refrigerante" : item?.category === "insumo" ? "Insumos" : item?.category === "herramienta" ? "Herramientas" : "Repuestos";
+    const category = expenseCategoryForStock(item?.category ?? "");
     const method = str(formData, "method");
     await supabase.from("transactions").insert({
       type: "egreso",
@@ -333,6 +367,124 @@ export async function addStockMove(formData: FormData) {
   }
   refresh();
   redirect(`/stock/${itemId}`);
+}
+
+export async function addStockCategory(formData: FormData) {
+  const { supabase } = await getContext();
+  const name = str(formData, "name");
+  if (name) await supabase.from("stock_categories").upsert({ name }, { onConflict: "owner_id,name", ignoreDuplicates: true });
+  refresh();
+  redirect(back(formData, "/stock?categorias=1"));
+}
+
+/** Renombra una categoría y actualiza los ítems que la usan. */
+export async function renameStockCategory(formData: FormData) {
+  const { supabase } = await getContext();
+  const id = str(formData, "id");
+  const name = str(formData, "name");
+  const { data: current } = await supabase.from("stock_categories").select("name").eq("id", id).single();
+  if (current && name && name !== current.name) {
+    const { error } = await supabase.from("stock_categories").update({ name }).eq("id", id);
+    if (!error) await supabase.from("stock_items").update({ category: name }).eq("category", current.name);
+  }
+  refresh();
+  redirect("/stock?categorias=1");
+}
+
+/** Borra una categoría solo si ningún ítem la usa. */
+export async function deleteStockCategory(formData: FormData) {
+  const { supabase } = await getContext();
+  const id = str(formData, "id");
+  const { data: current } = await supabase.from("stock_categories").select("name").eq("id", id).single();
+  if (current) {
+    const { count } = await supabase.from("stock_items").select("id", { count: "exact", head: true }).eq("category", current.name);
+    if (count) redirect(`/stock?categorias=1&error=${encodeURIComponent(`“${current.name}” tiene ${count} ítems. Cambiales la categoría antes de borrarla.`)}`);
+    await supabase.from("stock_categories").delete().eq("id", id);
+  }
+  refresh();
+  redirect("/stock?categorias=1");
+}
+
+// --- Fotos ---
+
+/** Registra una foto ya subida a Storage (la sube el navegador, comprimida). */
+export async function addPhoto(input: { path: string; clientId: string; jobId?: string | null; caption?: string }) {
+  const { supabase, userId } = await getContext();
+  if (!input.path.startsWith(`${userId}/`)) return { error: "Ruta de foto inválida." };
+  const { error } = await supabase.from("photos").insert({
+    path: input.path,
+    client_id: input.clientId,
+    job_id: input.jobId || null,
+    caption: input.caption?.trim() || null,
+  });
+  if (error) {
+    await supabase.storage.from("photos").remove([input.path]);
+    return { error: error.message };
+  }
+  refresh();
+  return {};
+}
+
+export async function deletePhoto(formData: FormData) {
+  const { supabase } = await getContext();
+  const id = str(formData, "id");
+  const { data: photo } = await supabase.from("photos").select("path").eq("id", id).single();
+  if (photo) {
+    await supabase.storage.from("photos").remove([photo.path]);
+    await supabase.from("photos").delete().eq("id", id);
+  }
+  refresh();
+  redirect(back(formData, "/clientes"));
+}
+
+// --- Recordatorios ---
+
+export async function saveReminder(formData: FormData) {
+  const { supabase } = await getContext();
+  const title = str(formData, "title");
+  let dueDate = dateOrNull(str(formData, "due_date"));
+  const months = Number(str(formData, "months"));
+  if (!dueDate && months > 0) dueDate = addMonths(dateOrNull(str(formData, "from_date")) ?? today(), months);
+  if (title && dueDate) {
+    await supabase.from("reminders").insert({
+      title,
+      due_date: dueDate,
+      notes: orNull(str(formData, "notes")),
+      client_id: orNull(str(formData, "client_id")),
+      job_id: orNull(str(formData, "job_id")),
+      equipment_id: orNull(str(formData, "equipment_id")),
+    });
+  }
+  refresh();
+  redirect(back(formData, "/recordatorios"));
+}
+
+export async function setReminderStatus(formData: FormData) {
+  const { supabase } = await getContext();
+  const status = str(formData, "status");
+  if (["pendiente", "hecho", "descartado"].includes(status)) {
+    await supabase.from("reminders").update({ status }).eq("id", str(formData, "id"));
+  }
+  refresh();
+  redirect(back(formData, "/recordatorios"));
+}
+
+/** Pospone un recordatorio N días desde hoy. */
+export async function postponeReminder(formData: FormData) {
+  const { supabase } = await getContext();
+  const days = Number(str(formData, "days")) || 7;
+  const [y, m, d] = today().split("-").map(Number);
+  const due = new Date(Date.UTC(y, m - 1, d + days)).toISOString().slice(0, 10);
+  await supabase.from("reminders").update({ due_date: due, status: "pendiente" }).eq("id", str(formData, "id"));
+  refresh();
+  redirect(back(formData, "/recordatorios"));
+}
+
+export async function deleteReminder(formData: FormData) {
+  const { supabase } = await getContext();
+  await supabase.from("reminders").delete().eq("id", str(formData, "id"));
+  refresh();
+  redirect(back(formData, "/recordatorios"));
 }
 
 // --- Finanzas ---

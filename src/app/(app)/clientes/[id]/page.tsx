@@ -3,24 +3,30 @@ import { notFound } from "next/navigation";
 import { getContext } from "@/lib/data";
 import { formatDay, formatMoney } from "@/lib/format";
 import { EQUIPMENT_TYPES, OPEN_STATUSES, equipmentLabel } from "@/lib/labels";
-import { JOB_SELECT } from "@/lib/queries";
+import { JOB_SELECT, REMINDER_SELECT, getPhotos } from "@/lib/queries";
 import { mapsLink, param, whatsappLink } from "@/lib/util";
-import { deleteClient, deleteEquipment, saveEquipment } from "../../actions";
+import { deleteClient, deleteEquipment, saveEquipment, saveReminder } from "../../actions";
 import { JobRow } from "@/components/job-row";
+import { PhotoGrid } from "@/components/photo-grid";
+import { PhotoUploader } from "@/components/photo-uploader";
+import { ReminderItem } from "@/components/reminder-item";
 import { Submit } from "@/components/submit";
 import { Empty, Stat } from "@/components/ui";
-import type { Client, Equipment, JobWithClient } from "@/lib/types";
+import type { Client, Equipment, JobWithClient, ReminderWithClient } from "@/lib/types";
 
 export default async function ClientPage({ params, searchParams }: PageProps<"/clientes/[id]">) {
   const { id } = await params;
   const query = await searchParams;
-  const { supabase } = await getContext();
+  const ctx = await getContext();
+  const { supabase } = ctx;
 
-  const [clientRes, equipmentRes, jobsRes, paidRes] = await Promise.all([
+  const [clientRes, equipmentRes, jobsRes, paidRes, photos, remindersRes] = await Promise.all([
     supabase.from("clients").select("*").eq("id", id).maybeSingle<Client>(),
     supabase.from("equipment").select("*").eq("client_id", id).order("created_at"),
     supabase.from("jobs").select(JOB_SELECT).eq("client_id", id).order("created_at", { ascending: false }),
     supabase.from("transactions").select("amount").eq("client_id", id).eq("type", "ingreso"),
+    getPhotos(ctx, { clientId: id }),
+    supabase.from("reminders").select(REMINDER_SELECT).eq("client_id", id).eq("status", "pendiente").order("due_date"),
   ]);
   const client = clientRes.data;
   if (!client) notFound();
@@ -29,6 +35,9 @@ export default async function ClientPage({ params, searchParams }: PageProps<"/c
   const jobs = (jobsRes.data ?? []) as JobWithClient[];
   const billed = (paidRes.data ?? []).reduce((s, t) => s + Number(t.amount), 0);
   const open = jobs.filter((j) => OPEN_STATUSES.includes(j.status)).length;
+  const reminders = (remindersRes.data ?? []) as ReminderWithClient[];
+  const jobNumbers = new Map(jobs.map((j) => [j.id, j.number]));
+  const back = `/clientes/${id}`;
   const wa = whatsappLink(client.phone);
   const maps = mapsLink(client.address, client.zone);
 
@@ -131,9 +140,39 @@ export default async function ClientPage({ params, searchParams }: PageProps<"/c
         </section>
       </div>
 
+      <section className="card space-y-3">
+        <div className="flex items-center justify-between gap-2">
+          <h2 className="font-semibold">Fotos</h2>
+          <PhotoUploader clientId={id} />
+        </div>
+        <PhotoGrid photos={photos} back={back} jobNumbers={jobNumbers} />
+        <p className="text-xs text-muted">Incluye las fotos que cargues desde cada caso. Útil para la placa del equipo, la instalación o el antes y después.</p>
+      </section>
+
+      <section className="space-y-2">
+        <h2 className="font-semibold">Recordatorios</h2>
+        <ul className="card divide-y divide-border p-0">
+          {reminders.map((r) => (
+            <ReminderItem key={r.id} reminder={r} businessName={ctx.business.name} back={back} />
+          ))}
+          <li className="px-4 py-3">
+            <details>
+              <summary className="cursor-pointer text-sm font-medium text-accent">＋ Nuevo recordatorio</summary>
+              <form action={saveReminder} className="mt-3 grid gap-2 sm:grid-cols-[1fr_10rem_auto]">
+                <input type="hidden" name="client_id" value={id} />
+                <input type="hidden" name="back" value={back} />
+                <input className="input" name="title" placeholder="Ej: Service del aire del local" required aria-label="Recordatorio" />
+                <input className="input" type="date" name="due_date" required aria-label="Fecha" />
+                <Submit className="btn-ghost">Guardar</Submit>
+              </form>
+            </details>
+          </li>
+        </ul>
+      </section>
+
       <form action={deleteClient}>
         <input type="hidden" name="id" value={id} />
-        <Submit className="text-sm text-danger" confirm="¿Borrar este cliente y sus equipos?">Borrar cliente</Submit>
+        <Submit className="text-sm text-danger" confirm="¿Borrar este cliente con sus equipos y fotos?">Borrar cliente</Submit>
       </form>
     </div>
   );

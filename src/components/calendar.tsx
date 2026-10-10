@@ -8,6 +8,7 @@ type Props = {
   month: string; // YYYY-MM
   selected: string; // YYYY-MM-DD
   counts: Map<string, number>;
+  reminderCounts?: Map<string, number>;
   path?: string;
 };
 
@@ -22,7 +23,7 @@ export function monthGrid(month: string) {
   return { start, end: addDays(start, cells), cells };
 }
 
-export function Calendar({ month, selected, counts, path = "/" }: Props) {
+export function Calendar({ month, selected, counts, reminderCounts = new Map(), path = "/" }: Props) {
   const { start, cells } = monthGrid(month);
   const now = today();
   const days = Array.from({ length: cells }, (_, i) => addDays(start, i));
@@ -43,6 +44,7 @@ export function Calendar({ month, selected, counts, path = "/" }: Props) {
         {days.map((date) => {
           const inMonth = date.startsWith(month);
           const count = counts.get(date) ?? 0;
+          const reminders = reminderCounts.get(date) ?? 0;
           const isSelected = date === selected;
           const isToday = date === now;
           return (
@@ -50,7 +52,7 @@ export function Calendar({ month, selected, counts, path = "/" }: Props) {
               key={date}
               href={withQuery(path, { f: date, mes: month })}
               aria-current={isSelected ? "date" : undefined}
-              aria-label={`${date}${count ? `, ${count} trabajos` : ""}`}
+              aria-label={`${date}${count ? `, ${count} trabajos` : ""}${reminders ? `, ${reminders} recordatorios` : ""}`}
               className={`flex aspect-square flex-col items-center justify-center rounded-xl text-sm tabular-nums transition md:aspect-auto md:h-14 ${
                 isSelected ? "bg-accent font-bold text-white dark:text-black" : isToday ? "bg-accent-soft font-semibold text-accent" : inMonth ? "hover:bg-accent-soft/60" : "text-muted/50"
               }`}
@@ -60,11 +62,16 @@ export function Calendar({ month, selected, counts, path = "/" }: Props) {
                 {Array.from({ length: Math.min(count, 3) }, (_, i) => (
                   <span key={i} className={`h-1.5 w-1.5 rounded-full ${isSelected ? "bg-white dark:bg-black" : "bg-sage"}`} />
                 ))}
+                {reminders > 0 && <span className={`h-1.5 w-1.5 rounded-full ${isSelected ? "bg-white dark:bg-black" : "bg-warn"}`} />}
               </span>
             </Link>
           );
         })}
       </div>
+      <p className="mt-3 flex gap-4 text-xs text-muted">
+        <span className="flex items-center gap-1.5"><span className="h-1.5 w-1.5 rounded-full bg-sage" /> Trabajos</span>
+        <span className="flex items-center gap-1.5"><span className="h-1.5 w-1.5 rounded-full bg-warn" /> Recordatorios</span>
+      </p>
     </section>
   );
 }

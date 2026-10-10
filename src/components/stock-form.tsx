@@ -1,12 +1,16 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useState } from "react";
 import { saveStockItem, type FormState } from "@/app/(app)/actions";
-import { STOCK_CATEGORIES } from "@/lib/labels";
-import type { StockItem } from "@/lib/types";
+import type { StockCategoryRow, StockItem } from "@/lib/types";
 
-export function StockForm({ item }: { item?: StockItem }) {
+export function StockForm({ item, categories }: { item?: StockItem; categories: StockCategoryRow[] }) {
   const [state, action, pending] = useActionState<FormState, FormData>(saveStockItem, {});
+  const names = categories.map((c) => c.name);
+  // Si el ítem tiene una categoría que ya no está en la lista, se muestra igual.
+  if (item && !names.includes(item.category)) names.push(item.category);
+  const [category, setCategory] = useState(item?.category ?? names[0] ?? "__nueva");
+
   return (
     <form action={action} className="card space-y-4">
       {item && <input type="hidden" name="id" value={item.id} />}
@@ -15,13 +19,22 @@ export function StockForm({ item }: { item?: StockItem }) {
         <input className="input" id="name" name="name" defaultValue={item?.name} required placeholder="Ej: Capacitor 35 µF, Gas R410A, Bomba de desagote" />
       </div>
       <div className="grid grid-cols-2 gap-4">
-        <div>
-          <label className="label" htmlFor="category">Categoría</label>
-          <select className="input" id="category" name="category" defaultValue={item?.category ?? "repuesto"}>
-            {Object.entries(STOCK_CATEGORIES).map(([value, label]) => (
-              <option key={value} value={value}>{label}</option>
-            ))}
-          </select>
+        <div className={category === "__nueva" ? "col-span-2 grid grid-cols-2 gap-4" : ""}>
+          <div>
+            <label className="label" htmlFor="category">Categoría</label>
+            <select className="input" id="category" name="category" value={category} onChange={(e) => setCategory(e.target.value)}>
+              {names.map((name) => (
+                <option key={name} value={name}>{name}</option>
+              ))}
+              <option value="__nueva">＋ Nueva categoría…</option>
+            </select>
+          </div>
+          {category === "__nueva" && (
+            <div>
+              <label className="label" htmlFor="new_category">Nombre de la categoría</label>
+              <input className="input" id="new_category" name="new_category" required autoFocus placeholder="Ej: Caños de cobre" />
+            </div>
+          )}
         </div>
         <div>
           <label className="label" htmlFor="unit">Unidad</label>

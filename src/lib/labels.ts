@@ -1,4 +1,4 @@
-import type { EquipmentType, JobKind, JobStatus, PayMethod, StockCategory } from "@/lib/types";
+import type { EquipmentType, JobKind, JobStatus, PayMethod } from "@/lib/types";
 
 export const EQUIPMENT_TYPES: Record<EquipmentType, { label: string; icon: string }> = {
   aire: { label: "Aire acondicionado", icon: "❄️" },
@@ -27,12 +27,17 @@ export const JOB_STATUS: Record<JobStatus, { label: string; tone: string }> = {
 /** Estados en los que el caso sigue abierto. */
 export const OPEN_STATUSES: JobStatus[] = ["pendiente", "agendado", "en_curso", "esperando_repuesto"];
 
-export const STOCK_CATEGORIES: Record<StockCategory, string> = {
-  repuesto: "Repuesto",
-  insumo: "Insumo",
-  gas: "Gas refrigerante",
-  herramienta: "Herramienta",
-};
+/** Categorías con las que arranca cada negocio (después se editan en Stock). */
+export const DEFAULT_STOCK_CATEGORIES = ["Repuesto", "Insumo", "Gas refrigerante", "Herramienta"];
+
+/** Categoría de gasto en Finanzas para una compra de stock, según su categoría. */
+export function expenseCategoryForStock(category: string) {
+  const c = category.toLowerCase();
+  if (c.includes("gas")) return "Gas refrigerante";
+  if (c.includes("insumo")) return "Insumos";
+  if (c.includes("herramienta")) return "Herramientas";
+  return "Repuestos";
+}
 
 export const PAY_METHODS: Record<PayMethod, string> = {
   efectivo: "Efectivo",
@@ -46,6 +51,7 @@ export const INCOME_CATEGORIES = ["Servicio", "Instalación", "Venta de repuesto
 export const EXPENSE_CATEGORIES = [
   "Repuestos",
   "Gas refrigerante",
+  "Viáticos",
   "Combustible",
   "Herramientas",
   "Insumos",
@@ -59,3 +65,20 @@ export function equipmentLabel(e: { type: EquipmentType; brand: string | null; m
   const name = [e.brand, e.model].filter(Boolean).join(" ");
   return `${EQUIPMENT_TYPES[e.type].icon} ${EQUIPMENT_TYPES[e.type].label}${name ? ` · ${name}` : ""}`;
 }
+
+/** Movimientos que se pueden cargar desde un caso. */
+export const JOB_MOVEMENTS = [
+  { value: "cobro", label: "Cobro al cliente", type: "ingreso" as const },
+  { value: "Repuestos", label: "Gasto: repuestos comprados", type: "egreso" as const },
+  { value: "Gas refrigerante", label: "Gasto: gas refrigerante", type: "egreso" as const },
+  { value: "Viáticos", label: "Gasto: viáticos / traslado", type: "egreso" as const },
+  { value: "Otro gasto", label: "Gasto: otro", type: "egreso" as const },
+];
+
+/** Opciones para programar una revisión al crear un caso. */
+export const REVIEW_OPTIONS = [
+  { months: 0, label: "No programar" },
+  { months: 3, label: "En 3 meses" },
+  { months: 6, label: "En 6 meses" },
+  { months: 12, label: "En 1 año" },
+];

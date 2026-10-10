@@ -2,11 +2,14 @@ import Link from "next/link";
 import { getContext } from "@/lib/data";
 import { addDays, formatMoney, isDate, isMonth, monthRange, today } from "@/lib/format";
 import { OPEN_STATUSES } from "@/lib/labels";
-import { JOB_SELECT, getReceivables, getScheduledJobs, getStockItems, isLowStock } from "@/lib/queries";
-import { setJobStatus } from "./actions";
+import { JOB_SELECT, getPendingReminders, getReceivables, getRemindersBetween, getScheduledJobs, getStockItems, isLowStock } from "@/lib/queries";
+import { saveReminder, setJobStatus } from "./actions";
 import { Calendar, monthGrid } from "@/components/calendar";
 import { JobRow } from "@/components/job-row";
+import { ReminderItem } from "@/components/reminder-item";
+import { Submit } from "@/components/submit";
 import { Empty, Stat } from "@/components/ui";
+import { shortTime } from "@/lib/util";
 import type { JobWithClient } from "@/lib/types";
 
 function longDate(date: string) {
@@ -25,7 +28,7 @@ export default async function DashboardPage({ searchParams }: PageProps<"/">) {
   const grid = monthGrid(month);
   const current = monthRange(now.slice(0, 7));
 
-  const [calendarJobs, dayJobsRaw, unscheduled, monthTx, receivables, stock, waiting] = await Promise.all([
+  const [calendarJobs, dayJobsRaw, unscheduled, monthTx, receivables, stock, waiting, upcomingReminders, calendarReminders, tomorrowRaw] = await Promise.all([
     getScheduledJobs(ctx, grid.start, grid.end),
     getScheduledJobs(ctx, selected, addDays(selected, 1)),
     ctx.supabase
@@ -39,7 +42,16 @@ export default async function DashboardPage({ searchParams }: PageProps<"/">) {
     getReceivables(ctx),
     getStockItems(ctx),
     ctx.supabase.from("jobs").select(JOB_SELECT).eq("status", "esperando_repuesto").order("created_at").limit(10),
+    getPendingReminders(ctx, addDays(now, 8)), // vencidos y próximos 7 días
+    getRemindersBetween(ctx, grid.start, grid.end),
+    getScheduledJobs(ctx, addDays(now, 1), addDays(now, 2)),
   ]);
+
+  const reminderCounts = new Map<string, number>();
+  for (const r of calendarReminders) reminderCounts.set(r.due_date, (reminderCounts.get(r.due_date) ?? 0) + 1);
+  const dayReminders = calendarReminders.filter((r) => r.due_date === selected);
+  const tomorrowJobs = tomorrowRaw.filter((j) => j.status !== "cancelado" && j.status !== "terminado");
+  const back = selected === now ? "/" : `/?f=${selected}&mes=${month}`;
 
   const counts = new Map<string, number>();
   for (const j of calendarJobs) {
@@ -71,9 +83,28 @@ export default async function DashboardPage({ searchParams }: PageProps<"/">) {
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <Stat label="Trabajos de hoy" value={todayJobs.length} hint={todayJobs.length ? `${pendingToday} por hacer` : "Día libre"} />
         <Stat label="Ingresos del mes" value={formatMoney(income)} tone="income" hint={`Gastos ${formatMoney(expense)}`} />
-        <Stat label="Por cobrar" value={formatMoney(dueTotal)} tone={dueTotal > 0 ? "warn" : undefined} hint={`${receivables.length} casos terminados`} />
+        <Stat label="Por cobrar" value={formatMoney(dueTotal)} tone={dueTotal > 0 ? "warn" : undefined} hint={`${receivables.length} casos con saldo`} />
         <Stat label="Stock bajo" value={lowStock.length} tone={lowStock.length ? "danger" : undefined} hint={lowStock.length ? "Revisar reposición" : "Todo en orden"} />
       </div>
+
+      {upcomingReminders.length > 0 && (
+        <section className="space-y-2">
+          <div className="flex items-center justify-between">
+            <h2 className="font-semibold">
+              Recordatorios <span className="text-sm font-normal text-muted">· vencidos y próximos 7 días</span>
+            </h2>
+            <Link href="/recordatorios" className="text-sm text-accent">Ver todos</Link>
+          </div>
+          <ul className="card divide-y divide-border p-0">
+            {upcomingReminders.slice(0, 6).map((r) => (
+              <ReminderItem key={r.id} reminder={r} businessName={ctx.business.name} back={back} />
+            ))}
+          </ul>
+          {upcomingReminders.length > 6 && (
+            <Link href="/recordatorios" className="block text-center text-sm text-accent">+{upcomingReminders.length - 6} más</Link>
+          )}
+        </section>
+      )}
 
       <div className="grid gap-5 lg:grid-cols-[1fr_22rem]">
         <section className="space-y-2">
@@ -118,9 +149,44 @@ export default async function DashboardPage({ searchParams }: PageProps<"/">) {
               ))}
             </ul>
           )}
+
+          {dayReminders.length > 0 && !(selected === now && upcomingReminders.length > 0) && (
+            <ul className="card divide-y divide-border p-0">
+              {dayReminders.map((r) => (
+                <ReminderItem key={r.id} reminder={r} businessName={ctx.business.name} back={back} />
+              ))}
+            </ul>
+          )}
+
+          {selected === now && tomorrowJobs.length > 0 && (
+            <div className="card space-y-1 text-sm">
+              <p className="font-medium">Mañana tenés {tomorrowJobs.length} trabajo{tomorrowJobs.length === 1 ? "" : "s"}</p>
+              <ul className="text-muted">
+                {tomorrowJobs.map((j) => (
+                  <li key={j.id}>
+                    <Link href={`/casos/${j.id}`} className="hover:text-accent">
+                      {j.scheduled_time ? `${shortTime(j.scheduled_time)} · ` : ""}
+                      {j.clients?.name} — {j.title}
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          <details className="card">
+            <summary className="cursor-pointer text-sm font-medium text-accent">＋ Recordatorio para {selected === now ? "hoy" : longDate(selected).toLowerCase()}</summary>
+            <form action={saveReminder} className="mt-3 flex gap-2">
+              <input type="hidden" name="due_date" value={selected} />
+              <input type="hidden" name="back" value={back} />
+              <input className="input" name="title" placeholder="Ej: Llamar a Juan por el presupuesto" required aria-label="Recordatorio" />
+              <Submit className="btn-ghost">Guardar</Submit>
+            </form>
+            <p className="mt-2 text-xs text-muted">Para elegir otro día, tocalo en el calendario.</p>
+          </details>
         </section>
 
-        <Calendar month={month} selected={selected} counts={counts} />
+        <Calendar month={month} selected={selected} counts={counts} reminderCounts={reminderCounts} />
       </div>
 
       <div className="grid gap-5 md:grid-cols-2">

@@ -53,12 +53,10 @@ export type JobWithClient = Job & {
 
 export type JobNote = { id: string; job_id: string; body: string; created_at: string };
 
-export type StockCategory = "repuesto" | "insumo" | "gas" | "herramienta";
-
 export type StockItem = {
   id: string;
   name: string;
-  category: StockCategory;
+  category: string;
   unit: string;
   quantity: number;
   min_quantity: number;
@@ -94,4 +92,37 @@ export type Transaction = {
   job_id: string | null;
   client_id: string | null;
   created_at: string;
+};
+
+export type StockCategoryRow = { id: string; name: string };
+
+export type Photo = {
+  id: string;
+  client_id: string;
+  job_id: string | null;
+  path: string;
+  caption: string | null;
+  created_at: string;
+  url?: string | null;
+};
+
+export type ReminderStatus = "pendiente" | "hecho" | "descartado";
+
+export type Reminder = {
+  id: string;
+  client_id: string | null;
+  job_id: string | null;
+  equipment_id: string | null;
+  due_date: string;
+  title: string;
+  notes: string | null;
+  status: ReminderStatus;
+  done_job_id: string | null;
+  created_at: string;
+};
+
+export type ReminderWithClient = Reminder & {
+  clients: Pick<Client, "id" | "name" | "phone" | "address" | "zone"> | null;
+  equipment: Pick<Equipment, "id" | "type" | "brand" | "model"> | null;
+  jobs: Pick<Job, "id" | "number" | "kind" | "title" | "scheduled_date" | "closed_at"> | null;
 };

@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getContext } from "@/lib/data";
 import { formatDay, formatMoney, today } from "@/lib/format";
-import { PAY_METHODS, STOCK_CATEGORIES } from "@/lib/labels";
+import { PAY_METHODS } from "@/lib/labels";
 import { isLowStock } from "@/lib/queries";
 import { addStockMove, deleteStockMove, toggleStockArchived } from "../../actions";
 import { Submit } from "@/components/submit";
@@ -32,7 +32,7 @@ export default async function StockItemPage({ params }: PageProps<"/stock/[id]">
           <div className="min-w-0">
             <h1 className="page-title">{item.name}</h1>
             <p className="text-sm text-muted">
-              {STOCK_CATEGORIES[item.category]}
+              {item.category}
               {item.location ? ` · ${item.location}` : ""}
               {item.archived ? " · Archivado" : ""}
             </p>

@@ -29,14 +29,14 @@ export function param(value: string | string[] | undefined) {
   return typeof value === "string" ? value : "";
 }
 
-/** Link de WhatsApp para un teléfono argentino (agrega 549 si falta). */
-export function whatsappLink(phone: string | null) {
+/** Link de WhatsApp para un teléfono argentino (agrega 549 si falta), con mensaje opcional. */
+export function whatsappLink(phone: string | null, text?: string) {
   if (!phone) return null;
   let digits = phone.replace(/\D/g, "");
   if (!digits) return null;
   if (digits.startsWith("0")) digits = digits.slice(1);
   if (!digits.startsWith("54")) digits = `549${digits}`;
-  return `https://wa.me/${digits}`;
+  return `https://wa.me/${digits}${text ? `?text=${encodeURIComponent(text)}` : ""}`;
 }
 
 export function mapsLink(address: string | null, zone?: string | null) {
@@ -48,4 +48,48 @@ export function mapsLink(address: string | null, zone?: string | null) {
 /** "09:30:00" → "09:30" */
 export function shortTime(time: string | null) {
   return time ? time.slice(0, 5) : "";
+}
+
+/** Suma meses a una fecha YYYY-MM-DD (31/1 + 1 mes = 28/2). */
+export function addMonths(date: string, months: number) {
+  const [y, m, d] = date.split("-").map(Number);
+  const target = new Date(Date.UTC(y, m - 1 + months, 1));
+  const last = new Date(Date.UTC(target.getUTCFullYear(), target.getUTCMonth() + 1, 0)).getUTCDate();
+  target.setUTCDate(Math.min(d, last));
+  return target.toISOString().slice(0, 10);
+}
+
+/** Meses enteros entre dos fechas YYYY-MM-DD. */
+export function monthsBetween(from: string, to: string) {
+  const [y1, m1, d1] = from.split("-").map(Number);
+  const [y2, m2, d2] = to.split("-").map(Number);
+  return (y2 - y1) * 12 + (m2 - m1) - (d2 < d1 ? 1 : 0);
+}
+
+/**
+ * Link para agregar un evento a Google Calendar (así el celular avisa).
+ * Con hora: evento con duración; sin hora: evento de día completo.
+ */
+export function googleCalendarLink(opts: { title: string; date: string; time?: string | null; minutes?: number; details?: string; location?: string | null }) {
+  const compact = (d: string) => d.replace(/-/g, "");
+  let dates: string;
+  if (opts.time) {
+    const [h, min] = opts.time.split(":").map(Number);
+    const start = new Date(Date.UTC(2000, 0, 1, h, min));
+    const end = new Date(start.getTime() + (opts.minutes ?? 60) * 60000);
+    const hhmm = (t: Date) => `${String(t.getUTCHours()).padStart(2, "0")}${String(t.getUTCMinutes()).padStart(2, "0")}00`;
+    const endDate = end.getUTCDate() > 1 ? nextDay(opts.date) : opts.date;
+    dates = `${compact(opts.date)}T${hhmm(start)}/${compact(endDate)}T${hhmm(end)}`;
+  } else {
+    dates = `${compact(opts.date)}/${compact(nextDay(opts.date))}`;
+  }
+  const q = new URLSearchParams({ action: "TEMPLATE", text: opts.title, dates, ctz: "America/Argentina/Buenos_Aires" });
+  if (opts.details) q.set("details", opts.details);
+  if (opts.location) q.set("location", opts.location);
+  return `https://calendar.google.com/calendar/render?${q.toString()}`;
+}
+
+function nextDay(date: string) {
+  const [y, m, d] = date.split("-").map(Number);
+  return new Date(Date.UTC(y, m - 1, d + 1)).toISOString().slice(0, 10);
 }

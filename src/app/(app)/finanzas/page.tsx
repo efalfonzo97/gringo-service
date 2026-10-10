@@ -4,7 +4,7 @@ import { PERIODS, addDays, formatDay, formatMoney, resolveRange } from "@/lib/fo
 import { PAY_METHODS } from "@/lib/labels";
 import { getReceivables } from "@/lib/queries";
 import { withQuery } from "@/lib/util";
-import { Empty, PageHeader, Stat } from "@/components/ui";
+import { Empty, PageHeader, Stat, StatusBadge } from "@/components/ui";
 import type { Transaction } from "@/lib/types";
 
 type Tab = "todos" | "ingreso" | "egreso";
@@ -117,7 +117,7 @@ export default async function FinancePage({ searchParams }: PageProps<"/finanzas
         <Stat label="Ingresos" value={formatMoney(incomeTotal)} tone="income" hint={`${incomes.length} movimientos`} />
         <Stat label="Gastos" value={formatMoney(expenseTotal)} hint={`${expenses.length} movimientos`} />
         <Stat label="Ganancia" value={formatMoney(balance)} tone={balance < 0 ? "danger" : "income"} hint={incomeTotal ? `Margen ${Math.round((balance / incomeTotal) * 100)}%` : undefined} />
-        <Stat label="Por cobrar" value={formatMoney(dueTotal)} tone={dueTotal ? "warn" : undefined} hint="Casos terminados con saldo" />
+        <Stat label="Por cobrar" value={formatMoney(dueTotal)} tone={dueTotal ? "warn" : undefined} hint={`${receivables.length} casos con saldo`} />
       </div>
 
       <div className="grid gap-5 md:grid-cols-2">
@@ -139,8 +139,13 @@ export default async function FinancePage({ searchParams }: PageProps<"/finanzas
               <li key={job.id}>
                 <Link href={`/casos/${job.id}`} className="flex items-center justify-between gap-3 px-4 py-3">
                   <span className="min-w-0">
-                    <span className="block truncate font-medium">{job.clients?.name}</span>
-                    <span className="block truncate text-xs text-muted">#{job.number} · {job.title}</span>
+                    <span className="flex items-center gap-2">
+                      <span className="truncate font-medium">{job.clients?.name}</span>
+                      <StatusBadge status={job.status} />
+                    </span>
+                    <span className="block truncate text-xs text-muted">
+                      #{job.number} · {job.title} · precio {formatMoney(Number(job.price))}
+                    </span>
                   </span>
                   <span className="font-semibold tabular-nums text-warn">{formatMoney(due)}</span>
                 </Link>

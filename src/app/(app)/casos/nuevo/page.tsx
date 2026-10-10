@@ -1,9 +1,10 @@
 import { getContext } from "@/lib/data";
 import { isDate } from "@/lib/format";
 import { param } from "@/lib/util";
+import { JOB_KINDS } from "@/lib/labels";
 import { JobForm } from "@/components/job-form";
 import { PageHeader } from "@/components/ui";
-import type { Client, Equipment } from "@/lib/types";
+import type { Client, Equipment, JobKind } from "@/lib/types";
 
 export default async function NewJobPage({ searchParams }: PageProps<"/casos/nuevo">) {
   const params = await searchParams;
@@ -19,7 +20,14 @@ export default async function NewJobPage({ searchParams }: PageProps<"/casos/nue
       <JobForm
         clients={(clients.data ?? []) as Pick<Client, "id" | "name" | "zone">[]}
         equipment={(equipment.data ?? []) as Equipment[]}
-        defaults={{ clientId: param(params.cliente) || undefined, date: isDate(params.fecha) ? params.fecha : undefined }}
+        defaults={{
+          clientId: param(params.cliente) || undefined,
+          date: isDate(params.fecha) ? params.fecha : undefined,
+          equipmentId: param(params.equipo) || undefined,
+          kind: Object.hasOwn(JOB_KINDS, param(params.tipo)) ? (param(params.tipo) as JobKind) : undefined,
+          title: param(params.titulo) || undefined,
+          reminderId: param(params.recordatorio) || undefined,
+        }}
       />
     </div>
   );

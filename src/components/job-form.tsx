@@ -2,26 +2,31 @@
 
 import { useActionState, useState } from "react";
 import { saveJob, type FormState } from "@/app/(app)/actions";
-import { EQUIPMENT_TYPES, JOB_KINDS, JOB_STATUS, equipmentLabel } from "@/lib/labels";
-import type { Client, Equipment, Job } from "@/lib/types";
+import { EQUIPMENT_TYPES, JOB_KINDS, JOB_STATUS, REVIEW_OPTIONS, equipmentLabel } from "@/lib/labels";
+import type { Client, Equipment, Job, JobKind } from "@/lib/types";
 
 type Props = {
   clients: Pick<Client, "id" | "name" | "zone">[];
   equipment: Equipment[];
   job?: Job;
-  defaults?: { clientId?: string; date?: string };
+  defaults?: { clientId?: string; date?: string; equipmentId?: string; kind?: JobKind; title?: string; reminderId?: string };
 };
 
 export function JobForm({ clients, equipment, job, defaults = {} }: Props) {
   const [state, action, pending] = useActionState<FormState, FormData>(saveJob, {});
   const [clientId, setClientId] = useState(job?.client_id ?? defaults.clientId ?? (clients.length ? "" : "nuevo"));
-  const [equipmentId, setEquipmentId] = useState(job?.equipment_id ?? "");
+  const [equipmentId, setEquipmentId] = useState(job?.equipment_id ?? defaults.equipmentId ?? "");
+  const [kind, setKind] = useState<JobKind>(job?.kind ?? defaults.kind ?? "reparacion");
+  // Revisión sugerida: instalaciones y mantenimientos a 6 meses.
+  const [reviewMonths, setReviewMonths] = useState<number | null>(null);
+  const review = reviewMonths ?? (kind === "instalacion" || kind === "mantenimiento" ? 6 : 0);
   const clientEquipment = equipment.filter((e) => e.client_id === clientId);
   const isNewClient = clientId === "nuevo";
 
   return (
     <form action={action} className="space-y-4">
       {job && <input type="hidden" name="id" value={job.id} />}
+      {!job && defaults.reminderId && <input type="hidden" name="reminder_id" value={defaults.reminderId} />}
 
       <section className="card space-y-4">
         <h2 className="font-semibold">Cliente y equipo</h2>
@@ -113,7 +118,7 @@ export function JobForm({ clients, equipment, job, defaults = {} }: Props) {
           <div className="flex flex-wrap gap-2">
             {Object.entries(JOB_KINDS).map(([value, label]) => (
               <label key={value} className="chip cursor-pointer">
-                <input type="radio" name="kind" value={value} defaultChecked={(job?.kind ?? "reparacion") === value} className="sr-only" />
+                <input type="radio" name="kind" value={value} checked={kind === value} onChange={() => setKind(value as JobKind)} className="sr-only" />
                 {label}
               </label>
             ))}
@@ -121,7 +126,7 @@ export function JobForm({ clients, equipment, job, defaults = {} }: Props) {
         </fieldset>
         <div>
           <label className="label" htmlFor="title">Título</label>
-          <input className="input" id="title" name="title" defaultValue={job?.title} placeholder="Ej: No enfría, pierde agua, instalación split 3000 fg" />
+          <input className="input" id="title" name="title" defaultValue={job?.title ?? defaults.title} placeholder="Ej: No enfría, pierde agua, instalación split 3000 fg" />
         </div>
         <div>
           <label className="label" htmlFor="problem">Qué reporta el cliente</label>
@@ -155,10 +160,22 @@ export function JobForm({ clients, equipment, job, defaults = {} }: Props) {
             </select>
           </div>
           <div className="col-span-2 sm:col-span-1">
-            <label className="label" htmlFor="price">Presupuesto ($)</label>
+            <label className="label" htmlFor="price">Precio del trabajo ($)</label>
             <input className="input" id="price" name="price" inputMode="decimal" defaultValue={job?.price ? String(job.price) : ""} placeholder="0" />
+            <p className="mt-1 text-xs text-muted">Queda en “Por cobrar” hasta que registres el cobro.</p>
           </div>
         </div>
+        {!job && (
+          <div>
+            <label className="label" htmlFor="review_months">Recordarme una revisión</label>
+            <select className="input" id="review_months" name="review_months" value={review} onChange={(e) => setReviewMonths(Number(e.target.value))}>
+              {REVIEW_OPTIONS.map((o) => (
+                <option key={o.months} value={o.months}>{o.label}</option>
+              ))}
+            </select>
+            <p className="mt-1 text-xs text-muted">Se cuenta desde el día del trabajo. Te aparece en Hoy y en el calendario cuando toque.</p>
+          </div>
+        )}
         {job && (
           <div className="grid grid-cols-2 gap-3">
             <div>
